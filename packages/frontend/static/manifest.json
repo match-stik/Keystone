@@ -1,11 +1,11 @@
 {
-  "name": "Pulse",
-  "short_name": "Pulse",
-  "description": "Resonant — always connected",
+  "name": "Resonant",
+  "short_name": "Resonant",
+  "description": "Resonant — AI Companion",
   "start_url": "/chat",
   "display": "standalone",
-  "background_color": "#0d0a0f",
-  "theme_color": "#0d0a0f",
+  "background_color": "#09090b",
+  "theme_color": "#09090b",
   "orientation": "any",
   "icons": [
     {
