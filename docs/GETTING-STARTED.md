@@ -197,6 +197,8 @@ To find your computer's IP:
 - **Windows:** `ipconfig` → look for IPv4 Address
 - **macOS/Linux:** `ifconfig` or `ip addr` → look for your WiFi adapter's IP
 
+For access from anywhere (not just your WiFi), see [docs/REMOTE-ACCESS.md](REMOTE-ACCESS.md) — covers Tailscale (private, free) and Cloudflare Tunnel (public HTTPS with your own domain).
+
 ## The Orchestrator (Scheduled Check-ins)
 
 Your companion can reach out to you on its own. By default, it has three scheduled times:
