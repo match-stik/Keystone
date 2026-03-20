@@ -169,6 +169,37 @@ pm2 save
 pm2 startup              # Auto-start on boot
 ```
 
+## Updating
+
+Resonant uses git tags for releases. To update an existing installation:
+
+```bash
+cd resonant
+git pull                 # Get latest changes
+npm install              # Install any new dependencies
+npm run build            # Rebuild all packages
+```
+
+Then restart your process (PM2, systemd, or however you run it):
+
+```bash
+pm2 restart resonant     # If using PM2
+# or just stop and run: npm start
+```
+
+To update to a **specific version** instead of latest:
+
+```bash
+git fetch --tags
+git checkout v1.1.0      # Replace with desired version
+npm install
+npm run build
+```
+
+Your data (`data/`, `resonant.yaml`, `CLAUDE.md`, `.mcp.json`, `.env`) is gitignored and won't be affected by updates.
+
+Check the [Releases](https://github.com/codependentai/resonant/releases) page for changelogs.
+
 ## Authentication
 
 Resonant uses the Claude Code Agent SDK — **no API key needed**. Your companion runs queries through your existing Claude Code subscription. Just make sure you're logged in:
