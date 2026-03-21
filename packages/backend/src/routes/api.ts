@@ -43,6 +43,7 @@ import {
   getUnembeddedMessages,
   saveEmbedding,
   getEmbeddingCount,
+  getMessageContext,
 } from '../services/db.js';
 import type { TriggerCondition } from '../services/db.js';
 import {
@@ -671,11 +672,26 @@ router.post('/internal/search-semantic', async (req, res) => {
     }));
 
     scored.sort((a, b) => b.similarity - a.similarity);
-    const results = scored.slice(0, Math.min(limit, 50)).map(r => ({
-      ...r,
-      content: r.content.length > 300 ? r.content.slice(0, 300) + '…' : r.content,
-      similarity: Math.round(r.similarity * 1000) / 1000,
-    }));
+    const contextSize = Math.min((req.body as Record<string, unknown>).context as number || 2, 10);
+    const topResults = scored.slice(0, Math.min(limit, 50));
+
+    const results = topResults.map(r => {
+      const surrounding = getMessageContext(r.messageId, contextSize);
+      return {
+        messageId: r.messageId,
+        threadId: r.threadId,
+        threadName: r.threadName,
+        similarity: Math.round(r.similarity * 1000) / 1000,
+        createdAt: r.createdAt,
+        context: surrounding.map(m => ({
+          id: m.id,
+          role: m.role,
+          content: m.content.length > 500 ? m.content.slice(0, 500) + '…' : m.content,
+          createdAt: m.created_at,
+          isMatch: m.id === r.messageId,
+        })),
+      };
+    });
 
     const { embedded, total } = getEmbeddingCount();
     res.json({ results, indexed: embedded, totalMessages: total });
@@ -684,6 +700,46 @@ router.post('/internal/search-semantic', async (req, res) => {
     res.status(500).json({ error: 'Semantic search failed' });
   }
 });
+
+// Background backfill state
+let backfillRunning = false;
+let backfillProcessed = 0;
+let backfillErrors = 0;
+
+async function runBackfillLoop(batchSize: number, intervalMs: number): Promise<void> {
+  if (backfillRunning) return;
+  backfillRunning = true;
+  backfillProcessed = 0;
+  backfillErrors = 0;
+  console.log(`[backfill] Starting background indexing (batch=${batchSize}, interval=${intervalMs}ms)`);
+
+  const tick = async () => {
+    if (!backfillRunning) return;
+    const unembedded = getUnembeddedMessages(batchSize);
+    if (unembedded.length === 0) {
+      backfillRunning = false;
+      const { embedded, total } = getEmbeddingCount();
+      console.log(`[backfill] Complete. ${embedded}/${total} messages indexed (${backfillErrors} errors).`);
+      return;
+    }
+    for (const msg of unembedded) {
+      if (!backfillRunning) return;
+      try {
+        const vector = await embed(msg.content);
+        saveEmbedding(msg.id, vectorToBuffer(vector));
+        backfillProcessed++;
+      } catch {
+        backfillErrors++;
+      }
+    }
+    if (backfillProcessed % 500 === 0) {
+      const { embedded, total } = getEmbeddingCount();
+      console.log(`[backfill] Progress: ${embedded}/${total}`);
+    }
+    setTimeout(tick, intervalMs);
+  };
+  tick();
+}
 
 router.post('/internal/embed-backfill', async (req, res) => {
   const ip = req.socket.remoteAddress || '';
@@ -694,9 +750,42 @@ router.post('/internal/embed-backfill', async (req, res) => {
   }
 
   try {
-    const batchSize = Math.min((req.body?.batchSize as number) || 50, 200);
-    const unembedded = getUnembeddedMessages(batchSize);
+    const rawBatch = req.body?.batchSize;
+    const batchSize = Math.min(typeof rawBatch === 'number' ? rawBatch : 50, 200);
+    const background = req.body?.background === true;
+    const action = req.body?.action as string | undefined;
 
+    if (batchSize === 0 || action === 'status') {
+      const { embedded, total } = getEmbeddingCount();
+      res.json({
+        processed: backfillProcessed, remaining: total - embedded,
+        indexed: embedded, totalMessages: total,
+        running: backfillRunning, errors: backfillErrors,
+      });
+      return;
+    }
+
+    if (action === 'stop') {
+      backfillRunning = false;
+      const { embedded, total } = getEmbeddingCount();
+      res.json({ stopped: true, processed: backfillProcessed, indexed: embedded, totalMessages: total });
+      return;
+    }
+
+    if (background) {
+      if (backfillRunning) {
+        const { embedded, total } = getEmbeddingCount();
+        res.json({ alreadyRunning: true, processed: backfillProcessed, indexed: embedded, totalMessages: total });
+        return;
+      }
+      const interval = Math.max((req.body?.intervalMs as number) || 5000, 1000);
+      runBackfillLoop(batchSize, interval);
+      const { embedded, total } = getEmbeddingCount();
+      res.json({ started: true, batchSize, intervalMs: interval, indexed: embedded, totalMessages: total });
+      return;
+    }
+
+    const unembedded = getUnembeddedMessages(batchSize);
     let processed = 0;
     for (const msg of unembedded) {
       try {

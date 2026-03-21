@@ -105,11 +105,11 @@ See [examples/themes/README.md](examples/themes/README.md) for the full variable
 ## Features
 
 ### Chat
-- Real-time streaming with tool use visualization
-- Thread management (daily + named)
-- Message search (Ctrl+K)
+- Real-time streaming with interleaved tool visualization
+- Thread management (daily + named), pinning, archiving
+- Keyword search (Ctrl+K) and **semantic search** — find messages by meaning, not just keywords, using local ML embeddings ([docs](docs/semantic-search.md))
 - File sharing and image preview
-- Canvas editor (markdown, code, text)
+- Canvas editor (markdown, code, text, html)
 - Message reactions
 - Reply-to context
 
@@ -117,6 +117,9 @@ See [examples/themes/README.md](examples/themes/README.md) for the full variable
 - Voice recording with transcription (Groq Whisper)
 - Text-to-speech responses (ElevenLabs)
 - Prosody analysis (Hume AI, optional)
+
+### Agent Tools
+Your agent gets a built-in CLI (`tools/sc.mjs`) with commands for reactions, voice messages, canvas, file sharing, semantic search, timers, impulses, watchers, and Telegram media. These are injected into the agent's context automatically. See [docs/TOOLS.md](docs/TOOLS.md) for the full reference.
 
 ### Orchestrator
 - Configurable morning/midday/evening check-ins
@@ -152,8 +155,12 @@ resonant/
 │   ├── CLAUDE.md        # Starter companion personality
 │   ├── wake-prompts.md  # Orchestrator prompt templates
 │   └── themes/          # CSS theme examples
+├── tools/
+│   └── sc.mjs           # Agent CLI (reactions, search, timers, etc.)
 ├── docs/
-│   └── HOOKS.md         # Context injection documentation
+│   ├── HOOKS.md          # Context injection documentation
+│   ├── TOOLS.md          # Built-in agent tools reference
+│   └── semantic-search.md # Semantic search setup & usage
 └── scripts/
     └── setup.mjs        # Interactive setup wizard
 ```

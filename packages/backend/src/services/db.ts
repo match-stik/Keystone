@@ -356,6 +356,26 @@ export function getMessages(params: {
   return messages.reverse(); // Return in chronological order
 }
 
+/** Get messages surrounding a specific message (N before + the message + N after). */
+export function getMessageContext(messageId: string, windowSize: number = 2): Message[] {
+  const target = getDb().prepare('SELECT thread_id, sequence FROM messages WHERE id = ?').get(messageId) as { thread_id: string; sequence: number } | undefined;
+  if (!target) return [];
+
+  const rows = getDb().prepare(`
+    SELECT * FROM messages
+    WHERE thread_id = ? AND deleted_at IS NULL
+      AND sequence BETWEEN ? AND ?
+    ORDER BY sequence ASC
+  `).all(target.thread_id, target.sequence - windowSize, target.sequence + windowSize);
+
+  return (rows as unknown as Message[]).map(msg => {
+    if (msg.metadata && typeof msg.metadata === 'string') {
+      msg.metadata = JSON.parse(msg.metadata);
+    }
+    return msg;
+  });
+}
+
 export function editMessage(id: string, newContent: string, editedAt: string): void {
   const stmt = getDb().prepare(`
     UPDATE messages

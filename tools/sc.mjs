@@ -232,8 +232,19 @@ switch (cmd) {
   }
 
   case 'backfill': {
-    const batchSize = args[0] ? parseInt(args[0], 10) : 50;
-    await post('embed-backfill', { batchSize }, 120000);
+    const sub = args[0];
+    if (sub === 'start') {
+      const batchSize = args[1] ? parseInt(args[1], 10) : 50;
+      const intervalMs = args[2] ? parseInt(args[2], 10) : 5000;
+      await post('embed-backfill', { background: true, batchSize, intervalMs }, 10000);
+    } else if (sub === 'stop') {
+      await post('embed-backfill', { action: 'stop' }, 10000);
+    } else if (sub === 'status') {
+      await post('embed-backfill', { action: 'status' }, 10000);
+    } else {
+      const batchSize = sub ? parseInt(sub, 10) : 50;
+      await post('embed-backfill', { batchSize }, 120000);
+    }
     break;
   }
 
