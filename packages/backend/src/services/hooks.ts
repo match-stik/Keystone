@@ -307,7 +307,12 @@ export function summarizeInput(name: string, input: unknown): string {
   if (!input || typeof input !== 'object') return '';
   const obj = input as Record<string, unknown>;
 
-  if (obj.command) return String(obj.command).substring(0, 120);
+  if (obj.command) {
+    const cmd = String(obj.command);
+    const scMatch = cmd.match(/sc\.mjs\s+\w+\s+(.*)/);
+    if (scMatch) return scMatch[1].substring(0, 120);
+    return cmd.substring(0, 120);
+  }
   if (obj.file_path) return String(obj.file_path);
   if (obj.pattern) return `${obj.pattern}`;
   if (obj.query) return String(obj.query).substring(0, 120);
@@ -318,6 +323,34 @@ export function summarizeInput(name: string, input: unknown): string {
     if (typeof val === 'string' && val.length > 0) return val.substring(0, 100);
   }
   return '';
+}
+
+const SC_COMMAND_NAMES: Record<string, string> = {
+  share: 'Share', canvas: 'Canvas', react: 'React', voice: 'Voice',
+  search: 'Search', backfill: 'Backfill', schedule: 'Schedule',
+  timer: 'Timer', impulse: 'Impulse', watch: 'Watcher', tg: 'Telegram',
+};
+
+function resolveToolName(toolName: string, toolInput: Record<string, unknown> | undefined): string {
+  if (toolName === 'Bash' && toolInput?.command) {
+    const scMatch = String(toolInput.command).match(/sc\.mjs\s+(\w+)/);
+    if (scMatch) return SC_COMMAND_NAMES[scMatch[1]] || scMatch[1];
+  }
+  if (toolName.startsWith('mcp__')) {
+    const parts = toolName.replace(/^mcp__/, '').split('__');
+    if (parts.length >= 2) {
+      let server = parts[0].replace(/^claude_ai_/, '');
+      const action = parts.slice(1).join('_');
+      const serverParts = server.split(/[-_]/);
+      const serverName = serverParts[serverParts.length - 1];
+      const capServer = serverName.charAt(0).toUpperCase() + serverName.slice(1);
+      let cleanAction = action;
+      if (cleanAction.startsWith(serverName + '_')) cleanAction = cleanAction.slice(serverName.length + 1);
+      const friendlyAction = cleanAction.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      return `${capServer}: ${friendlyAction}`;
+    }
+  }
+  return toolName;
 }
 
 function handleImageToolResult(toolName: string, output: string, threadId: string, registry: ConnectionRegistry): void {
@@ -576,16 +609,17 @@ function getSharedDirPrefixes(): string[] {
 function buildPreToolUse(ctx: HookContext): HookCallback {
   return safePreToolUse(async (input: HookInput) => {
     const hook = input as PreToolUseHookInput;
-    const toolName = hook.tool_name;
+    const rawToolName = hook.tool_name;
     const toolInput = hook.tool_input as Record<string, unknown> | undefined;
-    const inputSummary = summarizeInput(toolName, toolInput);
+    const inputSummary = summarizeInput(rawToolName, toolInput);
+    const displayName = resolveToolName(rawToolName, toolInput);
 
     // Track tool insertion with text offset for interleaved rendering
     const textOffset = ctx.getTextLength();
     ctx.toolInsertions.push({
       textOffset,
       toolId: hook.tool_use_id,
-      toolName,
+      toolName: displayName,
       input: inputSummary || undefined,
     });
 
@@ -593,14 +627,14 @@ function buildPreToolUse(ctx: HookContext): HookCallback {
     ctx.registry.broadcast({
       type: 'tool_use',
       toolId: hook.tool_use_id,
-      toolName,
+      toolName: displayName,
       input: inputSummary,
       isComplete: false,
       textOffset,
     });
 
     // --- Security: Bash destructive patterns ---
-    if (toolName === 'Bash' && toolInput?.command) {
+    if (rawToolName === 'Bash' && toolInput?.command) {
       const cmd = String(toolInput.command);
       for (const pattern of DESTRUCTIVE_BASH_PATTERNS) {
         if (pattern.test(cmd)) {
@@ -618,7 +652,7 @@ function buildPreToolUse(ctx: HookContext): HookCallback {
     }
 
     // --- Security: File writes outside safe prefixes ---
-    if ((toolName === 'Write' || toolName === 'Edit') && toolInput?.file_path) {
+    if ((rawToolName === 'Write' || rawToolName === 'Edit') && toolInput?.file_path) {
       const filePath = String(toolInput.file_path);
       const safePrefixes = getSafeWritePrefixes();
       if (safePrefixes.length > 0) {

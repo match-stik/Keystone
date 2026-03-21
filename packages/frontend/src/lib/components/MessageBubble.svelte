@@ -47,6 +47,15 @@
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
 
+  function formatToolOutput(raw: string): string {
+    if (!raw) return '';
+    const trimmed = raw.trim();
+    if ((trimmed.startsWith('{') || trimmed.startsWith('[')) && trimmed.length > 2) {
+      try { return JSON.stringify(JSON.parse(trimmed), null, 2); } catch {}
+    }
+    return raw;
+  }
+
   // Interleaved segments mode
   const hasSegments = $derived(segments !== null && segments.length > 0);
 
@@ -338,7 +347,7 @@
                   {/if}
                 </button>
                 {#if expandedToolIds.has(seg.toolId) && seg.output}
-                  <pre class="tool-output">{seg.output}</pre>
+                  <pre class="tool-output">{formatToolOutput(seg.output)}</pre>
                 {/if}
               </div>
             {/if}
@@ -376,7 +385,7 @@
               {/if}
             </button>
             {#if expandedToolIds.has(tool.toolId) && tool.output}
-              <pre class="tool-output">{tool.output}</pre>
+              <pre class="tool-output">{formatToolOutput(tool.output)}</pre>
             {/if}
           </div>
         {/each}
