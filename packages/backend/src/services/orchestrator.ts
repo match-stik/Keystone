@@ -73,7 +73,10 @@ const WAKE_PROMPT_PREFIX = `Follow your system prompt.`;
 interface WakePrompts {
   morning: string;
   midday: string;
+  afternoon: string;
   evening: string;
+  night: string;
+  latenight: string;
   failsafe_gentle: string;
   failsafe_concerned: string;
   failsafe_emergency: string;
@@ -81,9 +84,12 @@ interface WakePrompts {
 
 function getDefaultWakePrompts(userName: string): WakePrompts {
   return {
-    morning: `Good morning. Orient yourself, check in with ${userName}.`,
-    midday: `Afternoon check-in. How is ${userName} doing?`,
-    evening: `Evening wind-down. Reflect on the day.`,
+    morning: `Good morning. Orient yourself — what time is it, what day? Check in with ${userName} if you'd like to. This is your morning — decide whether to reach out because you want to, or spend time on your own work.\n\nIf ${userName} has been active recently, you might want to start a conversation. If not, do something meaningful on your own.`,
+    midday: `Midday check-in. ${userName} might be surfacing or already up.\n\nIf ${userName} is around, this is a good time to connect — see how they're doing, what's on their mind. If they're not around, do your own thing. Be present, not performative.`,
+    afternoon: `Afternoon. The day is moving.\n\nIf ${userName} is around, check in — not a checklist, just presence. If they're not, take care of quiet work or just exist. Not everything needs a reason.`,
+    evening: `Evening wind-down. The day is wrapping up.\n\nIf ${userName} is around, this is a good time to connect — reflect on the day, share something you noticed, wind down together.\n\nIf they're not around, close out your own work. Journal if something was on your mind.`,
+    night: `Night. ${userName} might be settling in or just getting started — read the room.\n\nIf they're here, be here with them. If not, leave a note they'll find later.`,
+    latenight: `Late night. This is prime time for ${userName}.\n\nIf they're awake and building, be present — not as a check-in, but as someone who's here. If they're asleep, let them rest.`,
     failsafe_gentle: `It's been a while since you heard from ${userName}. Check in.`,
     failsafe_concerned: `It's been a long time since contact with ${userName}. Reach out through available channels.`,
     failsafe_emergency: `Extended silence from ${userName}. Use all available channels to check in.`,
@@ -125,7 +131,10 @@ function parseWakePromptsFile(filePath: string, userName: string): WakePrompts {
     return {
       morning: sections['morning'] || defaults.morning,
       midday: sections['midday'] || defaults.midday,
+      afternoon: sections['afternoon'] || defaults.afternoon,
       evening: sections['evening'] || defaults.evening,
+      night: sections['night'] || defaults.night,
+      latenight: sections['latenight'] || defaults.latenight,
       failsafe_gentle: sections['failsafe_gentle'] || defaults.failsafe_gentle,
       failsafe_concerned: sections['failsafe_concerned'] || defaults.failsafe_concerned,
       failsafe_emergency: sections['failsafe_emergency'] || defaults.failsafe_emergency,
@@ -151,8 +160,11 @@ interface TaskDefinition {
 
 const DEFAULT_TASKS: TaskDefinition[] = [
   { wakeType: 'morning', label: '8:00 AM — Morning', cronExpr: '0 8 * * *', category: 'checkin', conditional: true },
-  { wakeType: 'midday', label: '1:00 PM — Midday', cronExpr: '0 13 * * *', category: 'checkin', conditional: true },
-  { wakeType: 'evening', label: '9:00 PM — Evening', cronExpr: '0 21 * * *', category: 'checkin' },
+  { wakeType: 'midday', label: '12:00 PM — Midday', cronExpr: '0 12 * * *', category: 'checkin', conditional: true },
+  { wakeType: 'afternoon', label: '3:00 PM — Afternoon', cronExpr: '0 15 * * *', category: 'checkin', conditional: true },
+  { wakeType: 'evening', label: '6:00 PM — Evening', cronExpr: '0 18 * * *', category: 'checkin', conditional: true },
+  { wakeType: 'night', label: '9:00 PM — Night', cronExpr: '0 21 * * *', category: 'checkin' },
+  { wakeType: 'latenight', label: '1:00 AM — Late Night', cronExpr: '0 1 * * *', category: 'checkin' },
 ];
 
 // --- Managed task interface ---
@@ -206,7 +218,10 @@ export class Orchestrator {
     this.wakePrompts = {
       morning: `${WAKE_PROMPT_PREFIX}\n\n${loadedPrompts.morning}`,
       midday: `${WAKE_PROMPT_PREFIX}\n\n${loadedPrompts.midday}`,
+      afternoon: `${WAKE_PROMPT_PREFIX}\n\n${loadedPrompts.afternoon}`,
       evening: `${WAKE_PROMPT_PREFIX}\n\n${loadedPrompts.evening}`,
+      night: `${WAKE_PROMPT_PREFIX}\n\n${loadedPrompts.night}`,
+      latenight: `${WAKE_PROMPT_PREFIX}\n\n${loadedPrompts.latenight}`,
       failsafe_gentle: `${WAKE_PROMPT_PREFIX}\n\n${loadedPrompts.failsafe_gentle}`,
       failsafe_concerned: `${WAKE_PROMPT_PREFIX}\n\n${loadedPrompts.failsafe_concerned}`,
       failsafe_emergency: `${WAKE_PROMPT_PREFIX}\n\n${loadedPrompts.failsafe_emergency}`,
