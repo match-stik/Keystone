@@ -199,11 +199,11 @@ export class DiscordService {
 
       console.log(`[Discord] Processing from ${firstMessage.author.username} in ${channelId}`);
 
-      // Pre-fetch channel history (25 messages)
+      // Pre-fetch channel history (10 messages)
       try {
         const channel = lastMessage.channel;
         if ('messages' in channel) {
-          const history = await (channel as TextChannel).messages.fetch({ limit: 25 });
+          const history = await (channel as TextChannel).messages.fetch({ limit: 10 });
           batch.channelHistory = formatChannelHistory([...history.values()].reverse());
         }
       } catch (err) {
@@ -295,7 +295,7 @@ export class DiscordService {
 
       const rulesContext = buildRulesContext(userId, channelId, batch.guildId);
       const historyContext = batch.channelHistory
-        ? `\n\n=== RECENT CHANNEL HISTORY (last 25 messages) ===\n${batch.channelHistory}`
+        ? `\n\n=== RECENT CHANNEL HISTORY (last 10 messages) ===\n${batch.channelHistory}`
         : '';
       const platformContext = `${platformGuidance}\n\n${rulesContext}${historyContext}`;
 
