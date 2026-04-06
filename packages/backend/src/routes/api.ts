@@ -2,7 +2,14 @@ import { Router } from 'express';
 import crypto from 'crypto';
 import multer from 'multer';
 import { readdirSync, readFileSync, writeFileSync, existsSync } from 'fs';
-import { join, basename, resolve } from 'path';
+import { join, basename, resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+// Derive project root from this module's location (packages/backend/src/routes/api.ts → ../../../..)
+// This is stable regardless of process.cwd(), which npm workspaces can change.
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const PROJECT_ROOT = resolve(__dirname, '..', '..', '..', '..');
 import yaml from 'js-yaml';
 import {
   listThreads,
@@ -57,7 +64,7 @@ import { getRecentAuditEntries } from '../services/audit.js';
 import { embed, cosineSimilarity, bufferToVector, vectorToBuffer } from '../services/embeddings.js';
 import { saveFile, saveFileInternal, getContentTypeFromMime, getFile, deleteFile, listFiles } from '../services/files.js';
 import { registry } from '../services/ws.js';
-import { getResonantConfig } from '../config.js';
+import { getResonantConfig, updateConfigValue } from '../config.js';
 import type { Orchestrator } from '../services/orchestrator.js';
 import type { VoiceService } from '../services/voice.js';
 import type { TelegramService } from '../services/telegram/index.js';
@@ -811,8 +818,9 @@ router.use(authMiddleware);
 // --- Preferences (resonant.yaml) ---
 
 function findConfigPath(): string | null {
+  // Use PROJECT_ROOT (not cwd) to match where config.ts loads from
   for (const name of ['resonant.yaml', 'resonant.yml']) {
-    const p = resolve(name);
+    const p = join(PROJECT_ROOT, name);
     if (existsSync(p)) return p;
   }
   return null;
@@ -881,8 +889,14 @@ router.put('/preferences', (req, res) => {
     }
     if (updates.agent) {
       if (!parsed.agent) parsed.agent = {};
-      if (updates.agent.model !== undefined) parsed.agent.model = updates.agent.model;
-      if (updates.agent.model_autonomous !== undefined) parsed.agent.model_autonomous = updates.agent.model_autonomous;
+      if (updates.agent.model !== undefined) {
+        parsed.agent.model = updates.agent.model;
+        updateConfigValue('agent.model', updates.agent.model);
+      }
+      if (updates.agent.model_autonomous !== undefined) {
+        parsed.agent.model_autonomous = updates.agent.model_autonomous;
+        updateConfigValue('agent.model_autonomous', updates.agent.model_autonomous);
+      }
     }
     if (updates.orchestrator) {
       if (!parsed.orchestrator) parsed.orchestrator = {};
@@ -1361,6 +1375,10 @@ router.get('/sessions', async (req, res) => {
 router.get('/settings', (req, res) => {
   try {
     const config = getAllConfig();
+    // Overlay YAML model values so the ModelSelector pill shows the real config
+    const resonantCfg = getResonantConfig();
+    config['agent.model'] = resonantCfg.agent.model;
+    config['agent.model_autonomous'] = resonantCfg.agent.model_autonomous;
     res.json({ config });
   } catch (error) {
     console.error('Error fetching settings:', error);
@@ -1377,6 +1395,22 @@ router.put('/settings', (req, res) => {
       return;
     }
     setConfig(key, value);
+
+    // Sync model changes to YAML + in-memory config so the agent picks them up immediately
+    if (key === 'agent.model' || key === 'agent.model_autonomous') {
+      updateConfigValue(key, value);
+      const configPath = findConfigPath();
+      if (configPath) {
+        const raw = readFileSync(configPath, 'utf-8');
+        const parsed = (yaml.load(raw) as Record<string, any>) || {};
+        if (!parsed.agent) parsed.agent = {};
+        if (key === 'agent.model') parsed.agent.model = value;
+        if (key === 'agent.model_autonomous') parsed.agent.model_autonomous = value;
+        const newYaml = yaml.dump(parsed, { lineWidth: -1, quotingType: '"', forceQuotes: true });
+        writeFileSync(configPath, newYaml, 'utf-8');
+      }
+    }
+
     res.json({ success: true });
   } catch (error) {
     console.error('Error updating setting:', error);

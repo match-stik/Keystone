@@ -65,6 +65,69 @@ function ensureInit() {
 // Presence state
 let presenceStatus: 'active' | 'dormant' | 'waking' | 'offline' = 'offline';
 
+// ---------------------------------------------------------------------------
+// MCP Lazy Loading (Cut 4 & 5) — only load heavy MCP servers when needed
+// ---------------------------------------------------------------------------
+
+// CC keywords — life management, tasks, wellness
+const CC_KEYWORDS = [
+  'task', 'todo', 'tasks', 'project', 'expense', 'budget', 'money',
+  'cycle', 'period', 'wellness', 'health', 'pet', 'cat', 'cats',
+  'countdown', 'calendar', 'daily win', 'scratchpad', 'note',
+];
+
+// Mind keywords — memory, emotion, identity
+const MIND_KEYWORDS = [
+  'remember', 'forget', 'memory', 'feel', 'feeling', 'mood',
+  'dream', 'journal', 'identity', 'tension', 'resolve', 'sit with',
+  'pattern', 'emotion', 'weather', 'recall', 'what do i think',
+];
+
+function hasKeywordIntent(message: string | undefined, keywords: string[]): boolean {
+  if (!message) return false;
+  const lower = message.toLowerCase();
+  return keywords.some(kw => lower.includes(kw));
+}
+
+function isCcServer(name: string, url?: string): boolean {
+  const nameLower = name.toLowerCase();
+  if (nameLower.includes('command') || nameLower.includes('cc')) return true;
+  if (url && url.endsWith('/mcp/cc')) return true;
+  return false;
+}
+
+function isMindServer(name: string): boolean {
+  return name.toLowerCase().includes('mind');
+}
+
+function filterMcpServers(
+  servers: Record<string, McpServerConfig>,
+  content: string,
+  isAutonomous: boolean,
+  isFirstMessage: boolean
+): Record<string, McpServerConfig> {
+  // Autonomous wakes and first messages get all servers — need full tool awareness
+  if (isAutonomous || isFirstMessage) return servers;
+
+  const needsCc = hasKeywordIntent(content, CC_KEYWORDS);
+  const needsMind = hasKeywordIntent(content, MIND_KEYWORDS);
+
+  // If message suggests CC or Mind intent, include those servers
+  // Otherwise, filter out heavy servers
+  const filtered: Record<string, McpServerConfig> = {};
+  for (const [name, cfg] of Object.entries(servers)) {
+    const url = (cfg as any).url as string | undefined;
+    const isCC = isCcServer(name, url);
+    const isMind = isMindServer(name);
+
+    if (isCC && !needsCc) continue;
+    if (isMind && !needsMind) continue;
+    filtered[name] = cfg;
+  }
+
+  return filtered;
+}
+
 // Context window tracking
 let contextTokensUsed = 0;
 let contextWindowSize = 0;
@@ -397,6 +460,7 @@ export class AgentService {
       platformContext: platformOpts?.platformContext,
       toolInsertions,
       getTextLength: () => fullResponse.length,
+      userMessage: content,  // Pass user message for conditional tool injection
     };
 
     // First message of this session — include static orientation content (tools, skills, vault)
@@ -408,6 +472,10 @@ export class AgentService {
     const model = isAutonomous
       ? cfg.agent.model_autonomous
       : (cfg.agent.model || process.env.AGENT_MODEL || 'claude-sonnet-4-6');
+    // Filter MCP servers per-query to reduce token overhead (Cut 4 & 5)
+    // Autonomous wakes and first messages get all servers; casual messages filter out CC/Mind
+    const mcpServersForQuery = filterMcpServers(mcpServersFromConfig, content, isAutonomous, isFirstMessage);
+
     const options: Options = {
       model,
       systemPrompt: claudeMdContent
@@ -422,7 +490,8 @@ export class AgentService {
       thinking: { type: 'adaptive' },
       hooks: createHooks(hookContext),
       // Explicitly pass MCP servers — SDK isolation mode doesn't auto-discover .mcp.json
-      ...(Object.keys(mcpServersFromConfig).length > 0 && { mcpServers: mcpServersFromConfig }),
+      // Per-query filtering reduces token overhead from heavy MCP schemas
+      ...(Object.keys(mcpServersForQuery).length > 0 && { mcpServers: mcpServersForQuery }),
     };
 
     // Resume existing session if available

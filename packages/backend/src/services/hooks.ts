@@ -48,6 +48,7 @@ export interface HookContext {
   platformContext?: string;
   toolInsertions: ToolInsertion[];
   getTextLength: () => number;
+  userMessage?: string;  // User's message content for conditional injection
 }
 
 // ---------------------------------------------------------------------------
@@ -75,6 +76,18 @@ const IMAGE_GEN_TOOLS = new Set([
   'mcp__image_gen__generate_image',
   'generate_image',
 ]);
+
+// Tool intent detection — only inject chat tools reference when user message suggests tool use
+function hasToolIntent(message?: string): boolean {
+  if (!message) return false;
+  const lower = message.toLowerCase();
+  const toolKeywords = [
+    '/routine', '/pulse', '/failsafe', '/timer', '/impulse', '/watcher', '/schedule',
+    'set a timer', 'create a timer', 'remind me', 'schedule', 'watch for',
+    'canvas', 'share file', 'voice note', 'react to',
+  ];
+  return toolKeywords.some(kw => lower.includes(kw));
+}
 
 // Emotional context markers for PreCompact
 const EMOTIONAL_MARKERS: Record<string, string[]> = {
@@ -999,10 +1012,12 @@ export async function buildOrientationContext(ctx: HookContext, includeStatic = 
     }
   }
 
-  // Chat tools — injected EVERY message (companion loses these after compaction otherwise)
+  // Chat tools — injected conditionally to save tokens
+  // Only inject when: autonomous wake, first message of session, or user message suggests tool intent
   const agentCwd = config.agent.cwd.replace(/\\/g, '/');
   const cliPath = join(agentCwd, 'tools', 'sc.mjs');
-  if (existsSync(cliPath)) {
+  const shouldInjectToolRef = ctx.isAutonomous || includeStatic || hasToolIntent(ctx.userMessage);
+  if (existsSync(cliPath) && shouldInjectToolRef) {
     const SC = `node ${cliPath.replace(/\\/g, '/')}`;
     parts.push([
       `CHAT TOOLS (run via Bash \u2014 threadId auto-injected):`,
@@ -1080,9 +1095,30 @@ export async function buildOrientationContext(ctx: HookContext, includeStatic = 
     }
   } catch {}
 
-  // Append platform-specific context (channel history, etc.)
+  // Append platform-specific context (channel history, etc.) with token budget
   if (ctx.platformContext) {
-    parts.push(ctx.platformContext);
+    const maxTokens = 500; // Token budget for platformContext
+    const estimated = Math.ceil(ctx.platformContext.length / 4);
+    if (estimated > maxTokens) {
+      // Keep header lines (before the history block), truncate history
+      const historyMarker = '=== RECENT CHANNEL HISTORY';
+      const markerIdx = ctx.platformContext.indexOf(historyMarker);
+      if (markerIdx > 0) {
+        const header = ctx.platformContext.slice(0, markerIdx);
+        const history = ctx.platformContext.slice(markerIdx);
+        const headerTokens = Math.ceil(header.length / 4);
+        const budgetForHistory = Math.max(0, (maxTokens - headerTokens)) * 4;
+        const truncatedHistory = history.length > budgetForHistory
+          ? '=== RECENT CHANNEL HISTORY (truncated) ===\n' + history.slice(-budgetForHistory)
+          : history;
+        parts.push(header + truncatedHistory);
+      } else {
+        // No history marker found, just hard-truncate from end
+        parts.push(ctx.platformContext.slice(0, maxTokens * 4));
+      }
+    } else {
+      parts.push(ctx.platformContext);
+    }
   }
 
   console.log(`[Orientation] ${ctx.isAutonomous ? 'autonomous' : 'interactive'}, platform=${ctx.platform}, thread="${ctx.threadName}", time=${timeStr}`);

@@ -198,3 +198,10 @@ export function getResonantConfig(): ResonantConfig {
   if (!_config) throw new Error('Config not loaded. Call loadConfig() first.');
   return _config;
 }
+
+/** Update a config value in memory without full reload */
+export function updateConfigValue(key: string, value: string): void {
+  if (!_config) return;
+  if (key === 'agent.model') _config.agent.model = value;
+  if (key === 'agent.model_autonomous') _config.agent.model_autonomous = value;
+}

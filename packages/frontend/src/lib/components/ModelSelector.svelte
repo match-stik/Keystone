@@ -2,7 +2,8 @@
   import { getConfig, updateSetting } from '$lib/stores/settings.svelte';
 
   const MODELS = [
-    { id: 'claude-opus-4-6', label: 'Opus' },
+    { id: 'claude-opus-4-6', label: 'Opus 4.6' },
+    { id: 'claude-opus-4-5', label: 'Opus 4.5' },
     { id: 'claude-sonnet-4-6', label: 'Sonnet' },
     { id: 'claude-haiku-4-5', label: 'Haiku' },
   ] as const;
